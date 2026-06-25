@@ -19,7 +19,16 @@ lib_path = os.environ.get('PDFNATIVE_LIB', '')
 if not lib_path:
     sys.exit('Set PDFNATIVE_LIB to the path of the pdfnative shared library.')
 
-uni_font   = os.environ.get('UNICODE_FONT_PATH', '')
+_FALLBACK_FONTS = [
+    '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+]
+uni_font = os.environ.get('UNICODE_FONT_PATH', '')
+if not uni_font:
+    for _f in _FALLBACK_FONTS:
+        if os.path.exists(_f):
+            uni_font = _f
+            break
 output_dir = os.path.join(os.path.dirname(__file__), 'output')
 os.makedirs(output_dir, exist_ok=True)
 lib = load_library(lib_path)

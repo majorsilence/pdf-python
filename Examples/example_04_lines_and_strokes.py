@@ -32,7 +32,7 @@ with PdfDocument(lib) as doc:
 
         y = 80.0
 
-        canvas.draw_text('Line widths (0.5 → 6 pt)', 72, y, label)
+        canvas.draw_text('Line widths (0.5 -> 6 pt)', 72, y, label)
         y += 16
         for w in (0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0):
             canvas.draw_line(72, y, 420, y, width=w)

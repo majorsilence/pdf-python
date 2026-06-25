@@ -21,8 +21,9 @@
 #   1. Downloads the pdfnative zip for your platform from majorsilence/Reporting
 #   2. Unpacks native libs into src/majorsilence_pdf/native/
 #   3. Builds the wheel and verifies native libs are inside it
-#   4. Creates a temporary venv, installs the wheel
+#   4. Creates a temporary venv, installs the wheel (with [dev] extras for pytest)
 #   5. Runs tests/test_pdf_native.py as a smoke test
+#   6. Runs all Examples/example_*.py against the bundled native lib
 #
 # To install the built wheel in your own project afterwards:
 #   pip install dist/majorsilence_pdf-*.whl --force-reinstall
@@ -54,12 +55,14 @@ ARCH="$(uname -m)"
 
 case "$OS" in
     Linux)
+        NATIVE_LIB_NAME="pdfnative.so"
         case "$ARCH" in
             x86_64)  ASSET_PATTERN="*-majorsilence-pdfnative-linux-x64.zip";  RID="linux-x64"  ;;
             aarch64) ASSET_PATTERN="*-majorsilence-pdfnative-linux-arm64.zip"; RID="linux-arm64" ;;
             *)       echo "Unsupported Linux arch: $ARCH"; exit 1 ;;
         esac ;;
     Darwin)
+        NATIVE_LIB_NAME="pdfnative.dylib"
         # macOS zip bundles both osx-x64 and osx-arm64 subdirs
         ASSET_PATTERN="*-majorsilence-pdfnative-osx.zip"
         case "$ARCH" in
@@ -125,9 +128,9 @@ mkdir -p dist
 echo ""
 echo "=== Verifying wheel ==="
 WHEEL=$(ls dist/majorsilence_pdf-*.whl | tail -1)
-NATIVE_FILES=$("$TEST_VENV/bin/python" -m zipfile -l "$WHEEL" | grep native/ || true)
+NATIVE_FILES=$("$TEST_VENV/bin/python" -m zipfile -l "$WHEEL" | grep "native/$NATIVE_LIB_NAME" || true)
 if [[ -z "$NATIVE_FILES" ]]; then
-    echo "ERROR: no native/ files found in wheel — packaging fix needed"
+    echo "ERROR: $NATIVE_LIB_NAME not found in wheel — native libs were not bundled"
     exit 1
 fi
 echo "$NATIVE_FILES"
@@ -136,16 +139,58 @@ echo "Wheel: $WHEEL ($(du -sh "$WHEEL" | cut -f1))"
 # ── Install wheel into the same venv for smoke test ──────────────────────────
 echo ""
 echo "=== Installing wheel ==="
-"$TEST_VENV/bin/pip" install --quiet "$WHEEL"
+"$TEST_VENV/bin/pip" install --quiet "$WHEEL[dev]"
+
+# Locate the native lib now so both the smoke test and examples can use it
+BUNDLED_LIB=$(find "$TEST_VENV" -name "$NATIVE_LIB_NAME" | head -1)
+if [[ -z "$BUNDLED_LIB" ]]; then
+    echo "ERROR: $NATIVE_LIB_NAME not found in installed venv — wheel did not bundle native libs"
+    exit 1
+fi
+echo "Bundled lib: $BUNDLED_LIB"
 
 echo ""
 echo "=== Running smoke test (tests/test_pdf_native.py) ==="
 echo "─────────────────────────────────────────────────────────"
-"$TEST_VENV/bin/python" -m pytest "$REPO_ROOT/tests/test_pdf_native.py" -v
+PDFNATIVE_LIB=bundled "$TEST_VENV/bin/python" -m pytest "$REPO_ROOT/tests/test_pdf_native.py" -v
 echo "─────────────────────────────────────────────────────────"
 
 echo ""
-echo "All done. Smoke test passed."
+echo "=== Running Examples ==="
+echo "Using bundled lib: $BUNDLED_LIB"
+echo "─────────────────────────────────────────────────────────"
+
+EXAMPLES_PASS=0
+EXAMPLES_FAIL=0
+EXAMPLES_FAILED=()
+
+for example in "$REPO_ROOT/Examples"/example_*.py; do
+    name="$(basename "$example")"
+    printf "  %-55s" "$name"
+    if output=$(PDFNATIVE_LIB="$BUNDLED_LIB" "$TEST_VENV/bin/python" "$example" 2>&1); then
+        echo "PASS"
+        EXAMPLES_PASS=$((EXAMPLES_PASS + 1))
+    else
+        echo "FAIL"
+        EXAMPLES_FAIL=$((EXAMPLES_FAIL + 1))
+        EXAMPLES_FAILED+=("$name")
+        echo "$output" | sed 's/^/    /'
+    fi
+done
+
+echo "─────────────────────────────────────────────────────────"
+echo "Examples: $EXAMPLES_PASS passed, $EXAMPLES_FAIL failed"
+
+if [[ $EXAMPLES_FAIL -gt 0 ]]; then
+    echo "Failed examples:"
+    for f in "${EXAMPLES_FAILED[@]}"; do
+        echo "  - $f"
+    done
+    exit 1
+fi
+
+echo ""
+echo "All done. Smoke test and all examples passed."
 echo ""
 echo "To install in your own project:"
 echo "  pip install \"$WHEEL\" --force-reinstall"

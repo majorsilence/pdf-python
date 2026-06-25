@@ -83,9 +83,9 @@ def load_bundled_library() -> ctypes.CDLL:
     native_dir = os.path.join(os.path.dirname(__file__), "native")
     system = platform.system()
     if system == "Linux":
-        lib_name = "libpdfnative.so"
+        lib_name = "pdfnative.so"
     elif system == "Darwin":
-        lib_name = "libpdfnative.dylib"
+        lib_name = "pdfnative.dylib"
     elif system == "Windows":
         lib_name = "pdfnative.dll"
     else:
