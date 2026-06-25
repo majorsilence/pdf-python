@@ -1,0 +1,169 @@
+name: Build and Publish to PyPI
+
+# Triggers:
+#   - GitHub release published: bundles the matching pdfnative release tag
+#   - Manual dispatch: pick any pdfnative release tag explicitly
+#
+# pdfnative releases live at: https://github.com/majorsilence/Reporting/releases
+# Asset naming: {version}-majorsilence-pdfnative-{platform}.zip
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      pdfnative_tag:
+        description: >
+          pdfnative release tag from majorsilence/Reporting to bundle
+          (e.g. 26.0.1). Defaults to the latest release.
+        required: false
+        default: ''
+
+jobs:
+  # ── Build platform-specific wheels (one per platform/arch) ─────────────────
+  build-native-wheels:
+    name: Wheel (${{ matrix.platform_tag }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform_tag: manylinux_2_17_x86_64
+            asset_pattern: '*-majorsilence-pdfnative-linux-x64.zip'
+            rid: linux-x64
+          - platform_tag: manylinux_2_17_aarch64
+            asset_pattern: '*-majorsilence-pdfnative-linux-arm64.zip'
+            rid: linux-arm64
+          - platform_tag: macosx_11_0_arm64
+            asset_pattern: '*-majorsilence-pdfnative-osx.zip'
+            rid: osx-arm64
+          - platform_tag: macosx_10_15_x86_64
+            asset_pattern: '*-majorsilence-pdfnative-osx.zip'
+            rid: osx-x64
+          - platform_tag: win_amd64
+            asset_pattern: '*-majorsilence-pdfnative-windows-x64.zip'
+            rid: win-x64
+          - platform_tag: win_arm64
+            asset_pattern: '*-majorsilence-pdfnative-windows-arm64.zip'
+            rid: win-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: pip install build wheel
+
+      - name: Resolve pdfnative release tag
+        id: native_tag
+        run: |
+          if [ -n "${{ inputs.pdfnative_tag }}" ]; then
+            TAG="${{ inputs.pdfnative_tag }}"
+          else
+            TAG=$(gh release view --repo majorsilence/Reporting --json tagName -q .tagName)
+          fi
+          echo "Resolved pdfnative tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download pdfnative asset
+        run: |
+          mkdir -p /tmp/pdfnative
+          gh release download "${{ steps.native_tag.outputs.tag }}" \
+            --repo majorsilence/Reporting \
+            --pattern "${{ matrix.asset_pattern }}" \
+            --dir /tmp/pdfnative
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unpack native libraries into package
+        run: |
+          mkdir -p src/majorsilence_pdf/native
+          mkdir -p /tmp/pdfnative/unpacked
+          ASSET=$(ls /tmp/pdfnative/*.zip | head -1)
+          echo "Extracting: $ASSET"
+          unzip "$ASSET" -d /tmp/pdfnative/unpacked
+          echo "--- zip contents ---"
+          find /tmp/pdfnative/unpacked -type f
+          echo "--- copying RID=${{ matrix.rid }} ---"
+          RID_DIR=$(find /tmp/pdfnative/unpacked -type d -name "${{ matrix.rid }}" | head -1)
+          if [ -z "$RID_DIR" ]; then
+            echo "ERROR: No directory named '${{ matrix.rid }}' found in the zip"
+            find /tmp/pdfnative/unpacked -type d
+            exit 1
+          fi
+          find "$RID_DIR" -type f \
+            -exec cp -v {} src/majorsilence_pdf/native/ \;
+          echo "--- native/ after copy ---"
+          ls -lh src/majorsilence_pdf/native/
+
+      - name: Build wheel
+        run: python -m build --wheel --outdir dist/
+
+      - name: Retag wheel with platform tag
+        run: |
+          wheel tags \
+            --python-tag py3 \
+            --abi-tag none \
+            --platform-tag "${{ matrix.platform_tag }}" \
+            --remove \
+            dist/*.whl
+
+      - name: Verify wheel contains native libs
+        run: python -m zipfile -l dist/*.whl | grep native/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform_tag }}
+          path: dist/*.whl
+
+  # ── Build pure-Python wheel + sdist (no bundled natives) ───────────────────
+  build-pure:
+    name: Pure wheel + sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build
+        run: python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-pure
+          path: dist/
+
+  # ── Publish everything to PyPI ─────────────────────────────────────────────
+  publish:
+    name: Publish to PyPI
+    needs: [build-native-wheels, build-pure]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for OIDC trusted publishing
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 'wheel-*'
+          merge-multiple: true
+          path: dist/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-pure
+          path: dist/
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

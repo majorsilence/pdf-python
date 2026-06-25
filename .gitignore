@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.claude/settings.local.json
+/Examples/output
+
+# pdfnative native libs bundled during wheel build (never commit these)
+src/majorsilence_pdf/native/*.so
+src/majorsilence_pdf/native/*.dylib
+src/majorsilence_pdf/native/*.dll
+src/majorsilence_pdf/native/*.h
+src/majorsilence_pdf/native/RdlEngineConfig.xml

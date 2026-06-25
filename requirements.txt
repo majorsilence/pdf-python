@@ -1,0 +1,2 @@
+# No runtime dependencies — the wrapper uses the Python standard library only
+# (ctypes, os, platform, glob).

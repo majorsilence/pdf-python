@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "majorsilence-pdf"
+version = "26.0.1"
+description = "Python bindings for the Majorsilence PDF library — create PDF documents in-process via an AOT-compiled native library, no .NET runtime required"
+readme = "README.md"
+license = { text = "MIT OR Apache-2.0 OR BSD-2-Clause" }
+requires-python = ">=3.10"
+keywords = [
+  "pdf", "pdf generation", "pdf creation", "pdf library",
+  "document", "native", "ctypes", "aot", "dotnet",
+  "tables", "images", "fonts", "annotations", "hyperlinks",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Topic :: Office/Business",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Printing",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+
+[project.urls]
+Homepage   = "https://github.com/majorsilence/Reporting"
+Source     = "https://github.com/majorsilence/pdf-python"
+Issues     = "https://github.com/majorsilence/pdf-python/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"majorsilence_pdf" = ["native/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
